@@ -1,0 +1,4 @@
+system:index,area_km2,class_id,class_name,.geo
+0,2950.902669480752,1,Double Cropping,"{""type"":""MultiPoint"",""coordinates"":[]}"
+1,220.69073664604585,2,Single Cropping,"{""type"":""MultiPoint"",""coordinates"":[]}"
+2,398.0163327103121,3,Fallow / Non-crop,"{""type"":""MultiPoint"",""coordinates"":[]}"

@@ -1,0 +1,23 @@
+P7 — Accuracy Assessment Report
+Ludhiana District Cropping Pattern Mapping
+=======================================================
+
+Overall Accuracy (OA) : 0.9962 (99.62%)
+Kappa Coefficient     : 0.9942
+
+Confusion Matrix (rows=True, cols=Predicted):
+                   Double Cropping  Single Cropping  Fallow / Non-crop
+Double Cropping                 81                1                  0
+Single Cropping                  0               88                  0
+Fallow / Non-crop                0                0                 91
+
+Classification Report:
+                   precision    recall  f1-score   support
+
+  Double Cropping     1.0000    0.9878    0.9939        82
+  Single Cropping     0.9888    1.0000    0.9944        88
+Fallow / Non-crop     1.0000    1.0000    1.0000        91
+
+         accuracy                         0.9962       261
+        macro avg     0.9963    0.9959    0.9961       261
+     weighted avg     0.9962    0.9962    0.9962       261
