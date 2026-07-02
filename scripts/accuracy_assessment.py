@@ -9,7 +9,7 @@ from sklearn.metrics import (
 )
 import os
 
-DATA_DIR   = r'C:\summer-project-P7'
+DATA_DIR   = r'C:\summer-project-P7\data'
 OUTPUT_DIR = r'C:\summer-project-P7\outputs'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -260,3 +260,4 @@ print(f"  OUT_PY03 → outputs/area_barchart.png")
 print(f"  TXT      → outputs/accuracy_report.txt")
 print(f"\nOA = {oa*100:.2f}%  |  Kappa = {kappa:.4f}")
 print("Python phase complete ✓")
+
