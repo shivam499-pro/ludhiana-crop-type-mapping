@@ -1,23 +1,36 @@
-P7 — Accuracy Assessment Report
+P7 â€” Accuracy Assessment Report
 Ludhiana District Cropping Pattern Mapping
-=======================================================
+==============================================================
 
-Overall Accuracy (OA) : 0.9962 (99.62%)
-Kappa Coefficient     : 0.9942
+Evaluation basis: agreement with phenology-derived labels.
+This is not an independent field-ground-truth accuracy estimate.
 
-Confusion Matrix (rows=True, cols=Predicted):
+Valid evaluated samples : 292
+Rows with missing/invalid class values excluded: 0
+Overall Accuracy        : 0.9932 (99.32%)
+Cohen's Kappa           : 0.9897
+
+Confusion Matrix (rows=True, columns=Predicted):
                    Double Cropping  Single Cropping  Fallow / Non-crop
-Double Cropping                 81                1                  0
-Single Cropping                  0               88                  0
-Fallow / Non-crop                0                0                 91
+Double Cropping                 98                0                  0
+Single Cropping                  0               99                  0
+Fallow / Non-crop                0                2                 93
 
-Classification Report:
+Class-wise Classification Report:
                    precision    recall  f1-score   support
 
-  Double Cropping     1.0000    0.9878    0.9939        82
-  Single Cropping     0.9888    1.0000    0.9944        88
-Fallow / Non-crop     1.0000    1.0000    1.0000        91
+  Double Cropping     1.0000    1.0000    1.0000        98
+  Single Cropping     0.9802    1.0000    0.9900        99
+Fallow / Non-crop     1.0000    0.9789    0.9894        95
 
-         accuracy                         0.9962       261
-        macro avg     0.9963    0.9959    0.9961       261
-     weighted avg     0.9962    0.9962    0.9962       261
+         accuracy                         0.9932       292
+        macro avg     0.9934    0.9930    0.9931       292
+     weighted avg     0.9933    0.9932    0.9931       292
+
+Class support:
+  Double Cropping: 98
+  Single Cropping: 99
+  Fallow / Non-crop: 95
+
+Methodological limitation:
+Reference labels were derived from NDVI phenology thresholds. The Random Forest feature set includes NDVI-derived variables that also contribute to label generation. Therefore, these metrics quantify model agreement with the derived labels and should not be presented as independent real-world crop-map accuracy. Independent field/reference data and spatially separated validation are recommended for that claim.

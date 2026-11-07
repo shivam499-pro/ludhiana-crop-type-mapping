@@ -1,263 +1,589 @@
+"""
+P7 — Accuracy Assessment and Results Visualization
+Ludhiana District Cropping Pattern Mapping
+
+Expected project layout:
+    project_root/
+        data/
+            P7_validation_predictions_rebuilt.csv
+            P7_area_stats.csv
+            monthly_ndvi.csv       (optional; recommended)
+        outputs/
+        scripts/
+            accuracy_assessment.py
+
+Run from any working directory:
+    python scripts/accuracy_assessment.py
+
+The validation metrics describe agreement with phenology-derived labels.
+They are not independent field-ground-truth accuracy estimates.
+"""
+
+from pathlib import Path
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
 from sklearn.metrics import (
-    confusion_matrix, accuracy_score,
-    cohen_kappa_score, classification_report
+    confusion_matrix,
+    accuracy_score,
+    cohen_kappa_score,
+    classification_report,
 )
-import os
 
-DATA_DIR   = r'C:\summer-project-P7\data'
-OUTPUT_DIR = r'C:\summer-project-P7\outputs'
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# ---------------------------------------------------------------------
+# 1. Paths and configuration
+# ---------------------------------------------------------------------
 
-CLASS_NAMES  = ['Double Cropping', 'Single Cropping', 'Fallow / Non-crop']
-CLASS_IDS    = [1, 2, 3]
-CLASS_COLORS = ['#1a9850', '#fee08b', '#d73027']
+# This file is expected at <project_root>/scripts/accuracy_assessment.py.
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+
+DATA_DIR = PROJECT_ROOT / "data"
+OUTPUT_DIR = PROJECT_ROOT / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+VALIDATION_FILE = DATA_DIR / "P7_validation_predictions_rebuilt.csv"
+AREA_FILE = DATA_DIR / "P7_area_stats.csv"
+MONTHLY_NDVI_FILE = DATA_DIR / "monthly_ndvi.csv"  # optional
+
+CLASS_IDS = [1, 2, 3]
+CLASS_NAMES = [
+    "Double Cropping",
+    "Single Cropping",
+    "Fallow / Non-crop",
+]
+CLASS_COLORS = ["#1a9850", "#fee08b", "#d73027"]
+CLASS_NAME_BY_ID = dict(zip(CLASS_IDS, CLASS_NAMES))
+
+# AOI area reported by the user's GEE AOI validation run.
+# Keep this explicit and sourced; update only if the AOI changes.
+AOI_AREA_KM2 = 3573.1078179393858
+
+# Monthly mean NDVI values transcribed from the user's GEE console output.
+# For a fully data-driven chart, place monthly_ndvi.csv in data/ with
+# columns: month, mean_ndvi. Example month: 2024-06-15.
+GEE_CONSOLE_NDVI = pd.DataFrame({
+    "month": pd.to_datetime([
+        "2024-06-15", "2024-07-15", "2024-08-15", "2024-09-15",
+        "2024-10-15", "2024-11-15", "2024-12-15", "2025-01-15",
+        "2025-02-15", "2025-03-15", "2025-04-15",
+    ]),
+    "mean_ndvi": [
+        0.201, 0.313, 0.759, 0.669, 0.464,
+        0.206, 0.367, 0.553, 0.678, 0.633, 0.280,
+    ],
+})
 
 plt.rcParams.update({
-    'font.family': 'Arial',
-    'axes.spines.top': False,
-    'axes.spines.right': False,
+    "font.family": "DejaVu Sans",
+    "axes.spines.top": False,
+    "axes.spines.right": False,
 })
 
 
-val_df = pd.read_csv(os.path.join(DATA_DIR, 'P7_validation_results.csv'))
-print("Validation CSV columns:", val_df.columns.tolist())
-print(val_df.head())
+# ---------------------------------------------------------------------
+# 2. Input validation
+# ---------------------------------------------------------------------
 
-val_df = val_df[['true_class', 'predicted_class']].dropna()
-val_df = val_df.astype(int)
-
-y_true = val_df['true_class'].values
-y_pred = val_df['predicted_class'].values
-
-print(f"\nTotal validation samples: {len(y_true)}")
-print(f"True class distribution:      {pd.Series(y_true).value_counts().sort_index().to_dict()}")
-print(f"Predicted class distribution: {pd.Series(y_pred).value_counts().sort_index().to_dict()}")
-
-oa    = accuracy_score(y_true, y_pred)
-kappa = cohen_kappa_score(y_true, y_pred)
-cm    = confusion_matrix(y_true, y_pred, labels=CLASS_IDS)
-cr    = classification_report(
-    y_true, y_pred,
-    labels=CLASS_IDS,
-    target_names=CLASS_NAMES,
-    digits=4
-)
-
-print("\n" + "="*55)
-print("ACCURACY ASSESSMENT RESULTS")
-print("="*55)
-print(f"Overall Accuracy (OA) : {oa:.4f} ({oa*100:.2f}%)")
-print(f"Kappa Coefficient     : {kappa:.4f}")
-print("\nConfusion Matrix (rows=True, cols=Predicted):")
-cm_df = pd.DataFrame(cm, index=CLASS_NAMES, columns=CLASS_NAMES)
-print(cm_df)
-print("\nClassification Report:")
-print(cr)
-
-
-report_path = os.path.join(OUTPUT_DIR, 'accuracy_report.txt')
-with open(report_path, 'w') as f:
-    f.write("P7 — Accuracy Assessment Report\n")
-    f.write("Ludhiana District Cropping Pattern Mapping\n")
-    f.write("="*55 + "\n\n")
-    f.write(f"Overall Accuracy (OA) : {oa:.4f} ({oa*100:.2f}%)\n")
-    f.write(f"Kappa Coefficient     : {kappa:.4f}\n\n")
-    f.write("Confusion Matrix (rows=True, cols=Predicted):\n")
-    f.write(cm_df.to_string())
-    f.write("\n\nClassification Report:\n")
-    f.write(cr)
-print(f"\nAccuracy report saved → {report_path}")
-
-fig, ax = plt.subplots(figsize=(7, 5.5))
-cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True) * 100
-
-sns.heatmap(
-    cm_norm,
-    annot=False,
-    cmap='Greens',
-    vmin=0, vmax=100,
-    linewidths=0.5,
-    linecolor='white',
-    ax=ax,
-    cbar_kws={'label': 'Row percentage (%)'}
-)
-
-
-for i in range(3):
-    for j in range(3):
-        count = cm[i, j]
-        pct   = cm_norm[i, j]
-        color = 'white' if pct > 60 else '#1a1a1a'
-        ax.text(
-            j + 0.5, i + 0.5,
-            f'{count}\n({pct:.1f}%)',
-            ha='center', va='center',
-            fontsize=11, fontweight='bold', color=color
+def require_file(path: Path) -> None:
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Required input file not found: {path}\n"
+            "Place the exported CSV in the project's data/ directory."
         )
 
-ax.set_xticklabels(CLASS_NAMES, fontsize=10, rotation=15, ha='right')
-ax.set_yticklabels(CLASS_NAMES, fontsize=10, rotation=0)
-ax.set_xlabel('Predicted Class', fontsize=11, labelpad=10)
-ax.set_ylabel('True Class', fontsize=11, labelpad=10)
-ax.set_title(
-    f'Confusion Matrix — Ludhiana Cropping Pattern Classification\n'
-    f'OA = {oa*100:.2f}%  |  Kappa = {kappa:.4f}  |  n = {len(y_true)} validation samples',
-    fontsize=11, fontweight='bold', pad=14
-)
 
-plt.tight_layout()
-cm_path = os.path.join(OUTPUT_DIR, 'confusion_matrix.png')
-plt.savefig(cm_path, dpi=300, bbox_inches='tight')
-plt.close()
-print(f"OUT_PY01 saved → {cm_path}")
+def load_validation_data(path: Path) -> tuple[pd.DataFrame, int]:
+    require_file(path)
+    df = pd.read_csv(path)
 
-dates = [
-    'Jun\n2024', 'Jul\n2024', 'Aug\n2024', 'Sep\n2024', 'Oct\n2024',
-    'Nov\n2024', 'Dec\n2024', 'Jan\n2025', 'Feb\n2025', 'Mar\n2025', 'Apr\n2025'
-]
-ndvi_values = [0.201, 0.313, 0.759, 0.669, 0.464,
-               0.206, 0.367, 0.553, 0.678, 0.633, 0.280]
+    required = {"true_class", "predicted_class"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise ValueError(
+            f"{path.name} is missing required columns: {sorted(missing)}"
+        )
 
-fig, ax = plt.subplots(figsize=(11, 5))
+    original_rows = len(df)
+    df = df[["true_class", "predicted_class"]].copy()
 
-x = np.arange(len(dates))
+    # Convert invalid text to NaN so it is counted and reported, not hidden.
+    for col in ["true_class", "predicted_class"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-ax.axvspan(-0.5, 4.5, alpha=0.08, color='#1a9850', label='_nolegend_')
-ax.axvspan(4.5, 10.5, alpha=0.08, color='#fee08b', label='_nolegend_')
+    invalid_rows = int(df.isna().any(axis=1).sum())
+    df = df.dropna().copy()
 
-ax.text(2.0, 0.93, 'Kharif 2024\n(Rice)', ha='center', va='top',
-        fontsize=10, color='#1a9850', fontweight='bold')
-ax.text(7.5, 0.93, 'Rabi 2024–25\n(Wheat)', ha='center', va='top',
-        fontsize=10, color='#b8860b', fontweight='bold')
+    if df.empty:
+        raise ValueError("No valid validation rows remain after checking missing values.")
 
+    # Class IDs must be integer values and must belong to the expected scheme.
+    for col in ["true_class", "predicted_class"]:
+        if not np.all(np.isclose(df[col], np.round(df[col]))):
+            raise ValueError(f"{col} contains non-integer class IDs.")
+        df[col] = df[col].astype(int)
 
-ax.plot(x, ndvi_values, color='#1a6b3a', linewidth=2.5,
-        marker='o', markersize=6, markerfacecolor='white',
-        markeredgecolor='#1a6b3a', markeredgewidth=2, zorder=5)
+        unexpected = sorted(set(df[col]) - set(CLASS_IDS))
+        if unexpected:
+            raise ValueError(
+                f"{col} contains unexpected class IDs {unexpected}; "
+                f"expected only {CLASS_IDS}."
+            )
 
-kharif_peak_idx = int(np.argmax(ndvi_values[:5]))        # Aug → index 2
-rabi_peak_idx   = int(np.argmax(ndvi_values[5:])) + 5   # Feb → index 8
+    return df, invalid_rows
 
 
-ax.scatter([kharif_peak_idx], [ndvi_values[kharif_peak_idx]],
-           color='#1a9850', s=120, zorder=6)
-ax.scatter([rabi_peak_idx], [ndvi_values[rabi_peak_idx]],
-           color='#b8860b', s=120, zorder=6)
+def load_area_data(path: Path) -> pd.DataFrame:
+    require_file(path)
+    df = pd.read_csv(path)
 
-ax.annotate(f'Kharif Peak\nNDVI = {ndvi_values[kharif_peak_idx]:.3f}\n(Rice heading)',
-            xy=(kharif_peak_idx, ndvi_values[kharif_peak_idx]),
-            xytext=(kharif_peak_idx - 0.8, 0.85),
-            fontsize=8.5, color='#1a6b3a',
-            arrowprops=dict(arrowstyle='->', color='#1a6b3a', lw=1.4))
+    required = {"class_name", "area_km2"}
+    missing = required.difference(df.columns)
+    if missing:
+        raise ValueError(
+            f"{path.name} is missing required columns: {sorted(missing)}"
+        )
 
-ax.annotate(f'Rabi Peak\nNDVI = {ndvi_values[rabi_peak_idx]:.3f}\n(Wheat heading)',
-            xy=(rabi_peak_idx, ndvi_values[rabi_peak_idx]),
-            xytext=(rabi_peak_idx + 0.3, 0.85),
-            fontsize=8.5, color='#b8860b',
-            arrowprops=dict(arrowstyle='->', color='#b8860b', lw=1.4))
+    df = df[["class_name", "area_km2"]].copy()
+    df["area_km2"] = pd.to_numeric(df["area_km2"], errors="coerce")
 
-ax.axhline(0.5, color='#d73027', linewidth=1.2, linestyle='--', alpha=0.7)
-ax.axhline(0.4, color='#fc8d59', linewidth=1.0, linestyle=':', alpha=0.7)
-ax.text(10.55, 0.50, '0.50\n(Peak\nthreshold)', fontsize=7.5,
-        color='#d73027', va='center')
-ax.text(10.55, 0.40, '0.40\n(Crop\npresence)', fontsize=7.5,
-        color='#fc8d59', va='center')
+    if df["area_km2"].isna().any():
+        raise ValueError("Area CSV contains missing or non-numeric area values.")
+    if (df["area_km2"] < 0).any():
+        raise ValueError("Area CSV contains negative area values.")
 
-ax.annotate('Inter-season\ntrough\n(NDVI = 0.21)',
-            xy=(5, 0.206), xytext=(5.5, 0.12),
-            fontsize=8, color='#555555',
-            arrowprops=dict(arrowstyle='->', color='#555555', lw=1.2))
+    # Check that each expected class occurs exactly once.
+    if df["class_name"].duplicated().any():
+        raise ValueError("Area CSV contains duplicate class names.")
 
-ax.set_xticks(x)
-ax.set_xticklabels(dates, fontsize=9)
-ax.set_ylabel('Mean NDVI', fontsize=11)
-ax.set_xlabel('Month', fontsize=11)
-ax.set_ylim(0, 1.02)
-ax.set_xlim(-0.5, 10.5)
-ax.set_title(
-    'NDVI Time-Series — Ludhiana District, Punjab (2024–25)\n'
-    'Sentinel-2 SR Harmonized | Monthly Median Composites',
-    fontsize=11, fontweight='bold', pad=12
-)
-ax.yaxis.grid(True, alpha=0.3, linestyle='--')
+    missing_classes = set(CLASS_NAMES) - set(df["class_name"])
+    extra_classes = set(df["class_name"]) - set(CLASS_NAMES)
+    if missing_classes or extra_classes:
+        raise ValueError(
+            f"Area class mismatch. Missing: {sorted(missing_classes)}; "
+            f"unexpected: {sorted(extra_classes)}."
+        )
 
-plt.tight_layout()
-ts_path = os.path.join(OUTPUT_DIR, 'ndvi_timeseries.png')
-plt.savefig(ts_path, dpi=300, bbox_inches='tight')
-plt.close()
-print(f"OUT_PY02 saved → {ts_path}")
+    return df.set_index("class_name").loc[CLASS_NAMES].reset_index()
 
-area_df = pd.read_csv(os.path.join(DATA_DIR, 'P7_area_stats.csv'))
-print("\nArea stats CSV:")
-print(area_df)
 
-# Keep only needed columns
-area_df = area_df[['class_name', 'area_km2']].copy()
-area_df['area_km2'] = area_df['area_km2'].astype(float).round(2)
-total_area = area_df['area_km2'].sum()
-area_df['pct'] = (area_df['area_km2'] / total_area * 100).round(1)
+# ---------------------------------------------------------------------
+# 3. Accuracy assessment
+# ---------------------------------------------------------------------
 
-print("\nClass areas:")
-for _, row in area_df.iterrows():
-    print(f"  {row['class_name']}: {row['area_km2']:.2f} km² ({row['pct']:.1f}%)")
+def create_accuracy_outputs(val_df: pd.DataFrame, invalid_rows: int) -> dict:
+    y_true = val_df["true_class"].to_numpy()
+    y_pred = val_df["predicted_class"].to_numpy()
 
-fig, ax = plt.subplots(figsize=(8, 5))
+    oa = accuracy_score(y_true, y_pred)
+    kappa = cohen_kappa_score(y_true, y_pred)
+    cm = confusion_matrix(y_true, y_pred, labels=CLASS_IDS)
 
-bars = ax.bar(
-    area_df['class_name'],
-    area_df['area_km2'],
-    color=CLASS_COLORS,
-    edgecolor='white',
-    linewidth=1.2,
-    width=0.5
-)
-
-# Value labels on bars
-for bar, (_, row) in zip(bars, area_df.iterrows()):
-    h = bar.get_height()
-    ax.text(
-        bar.get_x() + bar.get_width() / 2,
-        h + 15,
-        f'{row["area_km2"]:,.1f} km²\n({row["pct"]:.1f}%)',
-        ha='center', va='bottom',
-        fontsize=10, fontweight='bold', color='#1a1a1a'
+    report_dict = classification_report(
+        y_true,
+        y_pred,
+        labels=CLASS_IDS,
+        target_names=CLASS_NAMES,
+        output_dict=True,
+        zero_division=0,
+    )
+    report_text = classification_report(
+        y_true,
+        y_pred,
+        labels=CLASS_IDS,
+        target_names=CLASS_NAMES,
+        digits=4,
+        zero_division=0,
     )
 
-ax.set_ylabel('Area (km²)', fontsize=11)
-ax.set_xlabel('Cropping Pattern Class', fontsize=11)
-ax.set_title(
-    'Cropping Pattern Area Statistics — Ludhiana District, Punjab\n'
-    f'Total classified area: {total_area:,.1f} km²  |  Kharif 2024 + Rabi 2024–25',
-    fontsize=11, fontweight='bold', pad=12
-)
-ax.set_ylim(0, area_df['area_km2'].max() * 1.22)
-ax.yaxis.grid(True, alpha=0.3, linestyle='--')
-ax.set_axisbelow(True)
+    cm_df = pd.DataFrame(cm, index=CLASS_NAMES, columns=CLASS_NAMES)
 
-# Legend patches
-patches = [mpatches.Patch(color=c, label=n)
-           for c, n in zip(CLASS_COLORS, CLASS_NAMES)]
-ax.legend(handles=patches, loc='upper right', fontsize=9,
-          framealpha=0.8, edgecolor='#cccccc')
+    # Save a transparent text report.
+    report_path = OUTPUT_DIR / "accuracy_report.txt"
+    with report_path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write("P7 — Accuracy Assessment Report\n")
+        f.write("Ludhiana District Cropping Pattern Mapping\n")
+        f.write("=" * 62 + "\n\n")
+        f.write("Evaluation basis: agreement with phenology-derived labels.\n")
+        f.write(
+            "This is not an independent field-ground-truth accuracy estimate.\n\n"
+        )
+        f.write(f"Valid evaluated samples : {len(y_true)}\n")
+        f.write(f"Rows with missing/invalid class values excluded: {invalid_rows}\n")
+        f.write(f"Overall Accuracy        : {oa:.4f} ({oa * 100:.2f}%)\n")
+        f.write(f"Cohen's Kappa           : {kappa:.4f}\n\n")
+        f.write("Confusion Matrix (rows=True, columns=Predicted):\n")
+        f.write(cm_df.to_string())
+        f.write("\n\nClass-wise Classification Report:\n")
+        f.write(report_text)
+        f.write("\n")
+        f.write("Class support:\n")
+        for class_id, class_name in zip(CLASS_IDS, CLASS_NAMES):
+            count = int((y_true == class_id).sum())
+            f.write(f"  {class_name}: {count}\n")
+        f.write("\nMethodological limitation:\n")
+        f.write(
+            "Reference labels were derived from NDVI phenology thresholds. "
+            "The Random Forest feature set includes NDVI-derived variables "
+            "that also contribute to label generation. Therefore, these "
+            "metrics quantify model agreement with the derived labels and "
+            "should not be presented as independent real-world crop-map "
+            "accuracy. Independent field/reference data and spatially "
+            "separated validation are recommended for that claim.\n"
+        )
 
-plt.tight_layout()
-area_path = os.path.join(OUTPUT_DIR, 'area_barchart.png')
-plt.savefig(area_path, dpi=300, bbox_inches='tight')
-plt.close()
-print(f"OUT_PY03 saved → {area_path}")
+    # Normalized confusion matrix, robust to any absent class row.
+    row_totals = cm.sum(axis=1, keepdims=True)
+    cm_norm = np.divide(
+        cm.astype(float) * 100,
+        row_totals,
+        out=np.zeros_like(cm, dtype=float),
+        where=row_totals != 0,
+    )
 
-print("\n" + "="*55)
-print("ALL OUTPUTS GENERATED")
-print("="*55)
-print(f"  OUT_PY01 → outputs/confusion_matrix.png")
-print(f"  OUT_PY02 → outputs/ndvi_timeseries.png")
-print(f"  OUT_PY03 → outputs/area_barchart.png")
-print(f"  TXT      → outputs/accuracy_report.txt")
-print(f"\nOA = {oa*100:.2f}%  |  Kappa = {kappa:.4f}")
-print("Python phase complete ✓")
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(
+        cm_norm,
+        annot=False,
+        cmap="Greens",
+        vmin=0,
+        vmax=100,
+        linewidths=0.5,
+        linecolor="white",
+        xticklabels=CLASS_NAMES,
+        yticklabels=CLASS_NAMES,
+        ax=ax,
+        cbar_kws={"label": "Row percentage (%)"},
+    )
 
+    for i in range(len(CLASS_IDS)):
+        for j in range(len(CLASS_IDS)):
+            pct = cm_norm[i, j]
+            count = cm[i, j]
+            text_color = "white" if pct >= 60 else "#1a1a1a"
+            ax.text(
+                j + 0.5,
+                i + 0.5,
+                f"{count}\n({pct:.1f}%)",
+                ha="center",
+                va="center",
+                fontsize=11,
+                fontweight="bold",
+                color=text_color,
+            )
+
+    ax.set_xticklabels(CLASS_NAMES, fontsize=9, rotation=15, ha="right")
+    ax.set_yticklabels(CLASS_NAMES, fontsize=9, rotation=0)
+    ax.set_xlabel("Predicted Class", fontsize=11, labelpad=10)
+    ax.set_ylabel("Reference Label Class", fontsize=11, labelpad=10)
+    ax.set_title(
+        "Confusion Matrix — Ludhiana Cropping Pattern Classification\n"
+        f"Agreement = {oa * 100:.2f}% | Kappa = {kappa:.4f} | "
+        f"n = {len(y_true)}",
+        fontsize=11,
+        fontweight="bold",
+        pad=14,
+    )
+    fig.tight_layout()
+    fig.savefig(OUTPUT_DIR / "confusion_matrix.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    return {
+        "oa": oa,
+        "kappa": kappa,
+        "cm": cm,
+        "cm_df": cm_df,
+        "report_dict": report_dict,
+        "report_text": report_text,
+        "sample_count": len(y_true),
+        "invalid_rows": invalid_rows,
+    }
+
+
+# ---------------------------------------------------------------------
+# 4. NDVI time-series visualization
+# ---------------------------------------------------------------------
+
+def load_monthly_ndvi() -> tuple[pd.DataFrame, str]:
+    if MONTHLY_NDVI_FILE.is_file():
+        df = pd.read_csv(MONTHLY_NDVI_FILE)
+        required = {"month", "mean_ndvi"}
+        missing = required.difference(df.columns)
+        if missing:
+            raise ValueError(
+                f"monthly_ndvi.csv is missing columns: {sorted(missing)}"
+            )
+        df["month"] = pd.to_datetime(df["month"], errors="coerce")
+        df["mean_ndvi"] = pd.to_numeric(df["mean_ndvi"], errors="coerce")
+        df = df.dropna(subset=["month", "mean_ndvi"]).sort_values("month")
+        if df.empty:
+            raise ValueError("monthly_ndvi.csv contains no valid monthly records.")
+        return df, "Monthly mean NDVI from data/monthly_ndvi.csv"
+
+    return GEE_CONSOLE_NDVI.copy(), (
+        "Monthly mean NDVI transcribed from the GEE console; "
+        "replace with monthly_ndvi.csv when exported"
+    )
+
+
+def create_ndvi_chart() -> str:
+    df, source_note = load_monthly_ndvi()
+    df = df.sort_values("month").reset_index(drop=True)
+
+    dates = df["month"]
+    values = df["mean_ndvi"].to_numpy()
+    x = np.arange(len(df))
+
+    # Seasonal groupings follow the project's stated observation windows.
+    kharif_mask = dates.dt.month.isin([6, 7, 8, 9, 10]).to_numpy()
+    rabi_mask = dates.dt.month.isin([11, 12, 1, 2, 3, 4]).to_numpy()
+
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+
+    if kharif_mask.any():
+        kharif_x = x[kharif_mask]
+        ax.axvspan(
+            kharif_x.min() - 0.5,
+            kharif_x.max() + 0.5,
+            alpha=0.08,
+            color="#1a9850",
+        )
+        peak_idx = kharif_x[np.argmax(values[kharif_mask])]
+        ax.scatter(
+            peak_idx, values[peak_idx], color="#1a9850", s=95, zorder=5
+        )
+        ax.annotate(
+            f"Kharif seasonal maximum\nNDVI = {values[peak_idx]:.3f}",
+            xy=(peak_idx, values[peak_idx]),
+            xytext=(peak_idx - 0.8, min(0.96, values[peak_idx] + 0.16)),
+            fontsize=8.5,
+            color="#176b3a",
+            arrowprops={"arrowstyle": "->", "color": "#176b3a", "lw": 1.2},
+        )
+        ax.text(
+            kharif_x.mean(),
+            0.98,
+            "Kharif 2024",
+            ha="center",
+            va="top",
+            fontsize=9,
+            color="#176b3a",
+            fontweight="bold",
+        )
+
+    if rabi_mask.any():
+        rabi_x = x[rabi_mask]
+        ax.axvspan(
+            rabi_x.min() - 0.5,
+            rabi_x.max() + 0.5,
+            alpha=0.07,
+            color="#fee08b",
+        )
+        peak_idx = rabi_x[np.argmax(values[rabi_mask])]
+        ax.scatter(
+            peak_idx, values[peak_idx], color="#b8860b", s=95, zorder=5
+        )
+        ax.annotate(
+            f"Rabi seasonal maximum\nNDVI = {values[peak_idx]:.3f}",
+            xy=(peak_idx, values[peak_idx]),
+            xytext=(min(len(df) - 2, peak_idx + 0.35),
+                    min(0.96, values[peak_idx] + 0.16)),
+            fontsize=8.5,
+            color="#8a6500",
+            arrowprops={"arrowstyle": "->", "color": "#8a6500", "lw": 1.2},
+        )
+        ax.text(
+            rabi_x.mean(),
+            0.98,
+            "Rabi 2024–25",
+            ha="center",
+            va="top",
+            fontsize=9,
+            color="#8a6500",
+            fontweight="bold",
+        )
+
+    ax.plot(
+        x,
+        values,
+        color="#1a6b3a",
+        linewidth=2.2,
+        marker="o",
+        markersize=5.5,
+        markerfacecolor="white",
+        markeredgecolor="#1a6b3a",
+        markeredgewidth=1.6,
+        zorder=4,
+    )
+
+    labels = dates.dt.strftime("%b\n%Y")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=8.5)
+    ax.set_ylabel("District-wide Mean NDVI", fontsize=10)
+    ax.set_xlabel("Monthly observation", fontsize=10)
+    ax.set_ylim(0, max(1.0, float(np.nanmax(values)) + 0.2))
+    ax.set_xlim(-0.5, len(df) - 0.5)
+    ax.set_title(
+        "Monthly NDVI Time Series — Ludhiana District, Punjab (2024–25)\n"
+        "Sentinel-2 Surface Reflectance Harmonized",
+        fontsize=11,
+        fontweight="bold",
+        pad=12,
+    )
+    ax.yaxis.grid(True, alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+
+    fig.tight_layout()
+    fig.savefig(OUTPUT_DIR / "ndvi_timeseries.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return source_note
+
+
+# ---------------------------------------------------------------------
+# 5. Classified area statistics
+# ---------------------------------------------------------------------
+
+def create_area_outputs(area_df: pd.DataFrame) -> dict:
+    area_df = area_df.copy()
+    classified_total = float(area_df["area_km2"].sum())
+    if classified_total <= 0:
+        raise ValueError("Total classified area must be greater than zero.")
+
+    area_df["share_pct"] = area_df["area_km2"] / classified_total * 100
+    area_df["area_km2"] = area_df["area_km2"].astype(float)
+
+    difference = AOI_AREA_KM2 - classified_total
+    difference_pct = difference / AOI_AREA_KM2 * 100
+
+    # Do not silently call the difference masked area; it is the
+    # AOI-minus-classified-area balance and needs raster-level confirmation.
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    bars = ax.bar(
+        area_df["class_name"],
+        area_df["area_km2"],
+        color=CLASS_COLORS,
+        edgecolor="white",
+        linewidth=1.1,
+        width=0.55,
+    )
+
+    for bar, (_, row) in zip(bars, area_df.iterrows()):
+        height = bar.get_height()
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            height + classified_total * 0.012,
+            f'{row["area_km2"]:,.2f} km²\n({row["share_pct"]:.1f}%)',
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
+
+    ax.set_ylabel("Classified Area (km²)", fontsize=10)
+    ax.set_xlabel("Cropping Pattern Class", fontsize=10)
+    ax.set_title(
+        "Cropping Pattern Area Statistics — Ludhiana District, Punjab\n"
+        f"Classified area: {classified_total:,.2f} km²",
+        fontsize=11,
+        fontweight="bold",
+        pad=12,
+    )
+    ax.set_ylim(0, float(area_df["area_km2"].max()) * 1.25)
+    ax.yaxis.grid(True, alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+
+    patches = [
+        mpatches.Patch(color=color, label=name)
+        for color, name in zip(CLASS_COLORS, CLASS_NAMES)
+    ]
+    ax.legend(handles=patches, loc="upper right", fontsize=8.5, framealpha=0.9)
+
+    fig.tight_layout()
+    fig.savefig(OUTPUT_DIR / "area_barchart.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    # Save a machine-readable summary alongside the chart.
+    area_summary_path = OUTPUT_DIR / "area_summary.csv"
+    area_df.to_csv(area_summary_path, index=False, float_format="%.6f")
+
+    return {
+        "classified_total": classified_total,
+        "aoi_area": AOI_AREA_KM2,
+        "aoi_minus_classified": difference,
+        "difference_pct_of_aoi": difference_pct,
+        "area_df": area_df,
+    }
+
+
+# ---------------------------------------------------------------------
+# 6. Main execution
+# ---------------------------------------------------------------------
+
+def main() -> int:
+    print("=" * 65)
+    print("P7 — ACCURACY ASSESSMENT AND RESULTS VISUALIZATION")
+    print("=" * 65)
+    print(f"Project root: {PROJECT_ROOT}")
+    print(f"Data directory: {DATA_DIR}")
+    print(f"Output directory: {OUTPUT_DIR}")
+
+    val_df, invalid_rows = load_validation_data(VALIDATION_FILE)
+    area_df = load_area_data(AREA_FILE)
+
+    accuracy = create_accuracy_outputs(val_df, invalid_rows)
+    ndvi_source = create_ndvi_chart()
+    area = create_area_outputs(area_df)
+
+    print("\nACCURACY RESULTS")
+    print("-" * 45)
+    print(f"Evaluated samples: {accuracy['sample_count']}")
+    print(f"Excluded rows with invalid/missing class values: {invalid_rows}")
+    print(f"Overall agreement: {accuracy['oa']:.4f} ({accuracy['oa'] * 100:.2f}%)")
+    print(f"Cohen's Kappa: {accuracy['kappa']:.4f}")
+    print("\nConfusion matrix (rows=true, columns=predicted):")
+    print(accuracy["cm_df"])
+    print("\nClassification report:")
+    print(accuracy["report_text"])
+
+    print("\nAREA RESULTS")
+    print("-" * 45)
+    print(area["area_df"].to_string(index=False))
+    print(f"\nTotal classified area: {area['classified_total']:,.3f} km²")
+    print(f"AOI area reference: {area['aoi_area']:,.3f} km²")
+    print(
+        "AOI minus classified area: "
+        f"{area['aoi_minus_classified']:,.3f} km² "
+        f"({area['difference_pct_of_aoi']:.3f}% of AOI)"
+    )
+    print(
+        "Note: this difference is not automatically equivalent to masked "
+        "area; confirm it against the classified raster's NoData/unclassified pixels."
+    )
+
+    print("\nNDVI chart source:")
+    print(ndvi_source)
+
+    print("\nOUTPUTS GENERATED")
+    print("-" * 45)
+    for filename in [
+        "accuracy_report.txt",
+        "confusion_matrix.png",
+        "ndvi_timeseries.png",
+        "area_barchart.png",
+        "area_summary.csv",
+    ]:
+        print(f"  {OUTPUT_DIR / filename}")
+
+    print("\nCompleted successfully.")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"\nERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)
